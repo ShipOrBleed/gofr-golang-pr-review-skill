@@ -88,7 +88,12 @@ gh pr view <number> --repo <owner/repo> --json title,body,state,isDraft,headRefN
 - Flag vague descriptions like "minor fixes" or "some changes"
 
 ### Check PR size
-- If additions + deletions > 800 lines of meaningful code (excluding generated files, lockfiles), flag as "PR is too large — consider splitting"
+- If additions + deletions > 400 lines of meaningful code (excluding generated files, lockfiles), flag as "PR is too large — consider splitting"
+- 400 lines is the industry sweet spot — AI review accuracy drops 30-40% beyond this
+
+### Check linked issues
+- PR should reference a GitHub issue, Jira ticket, or Linear ticket in the description
+- If no issue is linked, flag: "No issue linked — what requirement does this PR fulfill?"
 
 ---
 
@@ -217,12 +222,61 @@ This is the #1 issue. Check EVERY file for:
 - [ ] No unreachable code after return/panic
 - [ ] Flag any code that exists but doesn't affect the execution flow — unnecessary assignments, redundant checks, unused variables
 
-#### B15: Security
+#### B15: Security — OWASP Aligned
 
 - [ ] No hardcoded secrets, tokens, passwords, API keys
+- [ ] **Secrets pattern detection** — flag strings matching known key prefixes: `AKIA` (AWS), `sk-` (OpenAI/Stripe), `ghp_` (GitHub), `xoxb-` (Slack), base64-encoded credentials, high-entropy strings that look like tokens
 - [ ] No credentials in config files committed to repo
 - [ ] SQL injection prevention — parameterized queries only
+- [ ] **Command injection** — no `exec.Command` with unsanitized user input, no `os/exec` with string concatenation
+- [ ] **Path traversal** — no `filepath.Join` or file operations with unsanitized user input containing `..`
+- [ ] **SSRF** — no HTTP calls to URLs derived from user input without allowlist validation
+- [ ] **Insecure deserialization** — no `json.Unmarshal` into `interface{}` from untrusted sources without validation
+- [ ] **Weak cryptography** — no `md5`, `sha1` for security purposes. Use `sha256` or stronger.
 - [ ] Input validation at handler level for all user inputs
+
+#### B16: N+1 Query Detection
+
+- [ ] **No queries inside loops** — if a `for` loop contains `c.SQL.QueryRowContext`, `c.SQL.QueryContext`, or any store method call, flag it as N+1
+- [ ] Batch queries instead: use `WHERE id IN (?)` or fetch all needed data in a single query before the loop
+- [ ] Check service layer for loops that call store methods repeatedly — same N+1 pattern
+
+#### B17: Pagination Enforcement
+
+- [ ] **All list endpoints MUST have pagination** — any handler that returns a list/slice MUST accept `page` and `limit` (or `offset` and `limit`) query parameters
+- [ ] No unbounded `SELECT *` or `SELECT ... FROM table` without `LIMIT`
+- [ ] Default limit must be set (e.g., 25 or 50) — never return all rows by default
+- [ ] Response should include pagination metadata (total count, next page indicator)
+
+#### B18: Concurrency Safety
+
+- [ ] **Race conditions** — if code uses shared mutable state across goroutines, it MUST be protected by `sync.Mutex`, `sync.RWMutex`, or use channels
+- [ ] **Mutex ordering** — if multiple mutexes are used, they must always be acquired in the same order to prevent deadlocks
+- [ ] **Atomic operations** — for simple counters/flags, prefer `sync/atomic` over mutex
+- [ ] **sync.Pool misuse** — objects retrieved from `sync.Pool` must not be used after being returned to the pool
+- [ ] **Channel direction** — use directional channels (`chan<-`, `<-chan`) in function signatures to prevent misuse
+- [ ] **select with default** — avoid `select { default: }` in hot loops (causes CPU spin)
+- [ ] **Tests should run with `-race`** — if test files exist, verify test commands include `-race` flag or mention it
+
+#### B19: Breaking API Changes
+
+- [ ] **Changed response struct fields** — if a JSON response field is renamed, removed, or its type changed, flag as BLOCKER: "This is a breaking API change — existing clients will fail"
+- [ ] **Changed HTTP status codes** — if a handler's success/error status codes changed, flag it
+- [ ] **Changed URL paths or query parameter names** — flag as breaking change
+- [ ] **Removed endpoints** — flag as BLOCKER
+- [ ] If breaking changes are intentional, they MUST be documented in the PR description with a migration plan
+
+#### B20: Dependency Health
+
+- [ ] **New dependencies in `go.mod`** — for any newly added dependency, check: is it actively maintained? Does it have known vulnerabilities? Is it necessary or can stdlib do the job?
+- [ ] **No deprecated packages** — flag use of `io/ioutil` (deprecated since Go 1.16), `golang.org/x/net/context` (use stdlib `context`), etc.
+- [ ] **Dependency size** — flag large dependencies added for trivial use (e.g., importing a full framework for one utility function)
+
+#### B21: Connection Pool & Timeout Configuration
+
+- [ ] **HTTP client timeouts** — any `http.Client` or GoFr HTTP service MUST have timeouts configured. Flag `&http.Client{}` with no `Timeout` field.
+- [ ] **DB connection pool** — if the app has high traffic, check that `DB_MAX_OPEN_CONNECTION` and `DB_MAX_IDLE_CONNECTION` are configured, not left at defaults
+- [ ] **Context timeouts** — long-running operations should use `context.WithTimeout` or `context.WithDeadline`
 
 ---
 
@@ -326,6 +380,24 @@ Apply these when the PR touches `.ts`, `.tsx`, `.js`, `.jsx`, `.css`, `.scss` fi
 - [ ] Code should be self-documenting via good naming
 - [ ] JSDoc only for public APIs and complex logic
 
+#### F13: API Contract Verification
+
+- [ ] **TypeScript types must match backend response shapes** — if the frontend defines a type for an API response, verify it matches the actual backend struct (check the backend code or API docs)
+- [ ] **No silently ignoring extra/missing fields** — if backend adds a field, frontend should use it or explicitly omit it
+- [ ] **API error shapes handled** — frontend error types should match backend error response format
+
+#### F14: Bundle Size & Dependencies
+
+- [ ] **No duplicate libraries** — flag if both `moment` and `date-fns` exist, or both `lodash` and `lodash-es`, or both `axios` and `fetch` wrappers
+- [ ] **New dependency justification** — any new package added to `package.json` should be justified. Is it necessary? Can a lighter alternative work?
+- [ ] **Bundle impact** — large packages (>50KB gzipped) added without lazy loading should be flagged
+
+#### F15: Breaking UI Changes
+
+- [ ] **Shared component signature changes** — if a shared/reusable component's props change, all consumers must be updated
+- [ ] **Route changes** — changing route paths breaks bookmarks, shared links, and any backend redirects
+- [ ] **CSS class name changes** — if classes are part of the public API or used by external consumers, renaming is a breaking change
+
 ---
 
 ### CROSS-CUTTING RULES
@@ -345,6 +417,18 @@ Apply these when the PR touches `.ts`, `.tsx`, `.js`, `.jsx`, `.css`, `.scss` fi
 - [ ] No generated files committed (unless intentional, like OpenAPI specs)
 - [ ] Lock files (go.sum, package-lock.json) changes match dependency changes
 
+#### X3: Dependency Vulnerability Check
+
+- [ ] If `go.mod` or `package.json` changed, scan for known-vulnerable packages
+- [ ] For Go: check if any dependency has known CVEs (look for advisories on the package)
+- [ ] For JS: flag if `package.json` adds packages with known security issues
+- [ ] Flag any dependency that is unmaintained (no commits in 2+ years, archived repo)
+
+#### X4: Changelog & Documentation
+
+- [ ] If the PR introduces user-facing changes (new API endpoints, changed behavior, new UI features), flag if no CHANGELOG entry exists
+- [ ] If new environment variables or configuration is added, check that it's documented in README or relevant docs
+
 ---
 
 ## Phase 4: Prepare Review (DO NOT POST YET)
@@ -353,18 +437,20 @@ Apply these when the PR touches `.ts`, `.tsx`, `.js`, `.jsx`, `.css`, `.scss` fi
 
 ### Severity Classification
 
-- **BLOCKER**: Missing tests, security issues, nil pointer risk, panic in app code, swallowed errors, no PR description, data loss risk, goroutine leaks
-- **MAJOR**: Architecture violations, comment bloat, wrong patterns, no error handling, JOINs/foreign keys, raw HTTP instead of GoFr service, exported when should be unexported, missing cleanup/defer
-- **MINOR**: Import sorting, naming suggestions, minor style issues
-- **SUGGESTION**: Possible improvements, questions about design choices, Redis justification
+- **BLOCKER**: Missing tests, security issues (OWASP), nil pointer risk, panic in app code, swallowed errors, no PR description, data loss risk, goroutine leaks, race conditions on shared state, breaking API changes without migration plan, hardcoded secrets/tokens, N+1 queries in hot paths, unbounded list endpoints without pagination
+- **MAJOR**: Architecture violations, comment bloat, wrong patterns, no error handling, JOINs/foreign keys, raw HTTP instead of GoFr service, exported when should be unexported, missing cleanup/defer, command injection risk, missing linked issue, deprecated dependencies
+- **MINOR**: Import sorting, naming suggestions, minor style issues, missing changelog entry, connection pool defaults
+- **SUGGESTION**: Possible improvements, questions about design choices, Redis justification, dependency alternatives, bundle size optimization
 
 ### Step 1: Prepare Inline Comments Locally
 
 For each issue found, prepare an inline comment with:
 - **File path** and **exact line number** (derived from diff hunk headers — see Phase 3 note)
 - **Comment body** — written like a real senior reviewer on GitHub:
-  - Conversational tone, not robotic
+  - Conversational tone, not robotic — write like a helpful senior colleague, not a linter
   - NO severity tags like `**[BLOCKER]**` — just speak naturally
+  - **Prefer questions over commands** for non-critical issues: "What happens if `items` is empty here?" is better than "This will fail if the list is empty"
+  - **Be direct for critical issues** — security, nil derefs, data loss: state the problem clearly and the fix
   - Explain WHAT is wrong, WHY it matters, and HOW to fix it
   - If possible, suggest the exact code change or pattern to use
   - Group related findings — if the same mistake repeats 5 times, comment once with "This pattern repeats in lines X, Y, Z — same fix applies"
