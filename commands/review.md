@@ -347,7 +347,9 @@ Apply these when the PR touches `.ts`, `.tsx`, `.js`, `.jsx`, `.css`, `.scss` fi
 
 ---
 
-## Phase 4: Post Review
+## Phase 4: Prepare Review (DO NOT POST YET)
+
+**You are a Senior Software Engineer with 5-8 years of experience doing an in-depth production-readiness review. Think like one. Review like one.**
 
 ### Severity Classification
 
@@ -356,9 +358,57 @@ Apply these when the PR touches `.ts`, `.tsx`, `.js`, `.jsx`, `.css`, `.scss` fi
 - **MINOR**: Import sorting, naming suggestions, minor style issues
 - **SUGGESTION**: Possible improvements, questions about design choices, Redis justification
 
-### Posting Comments
+### Step 1: Prepare Inline Comments Locally
 
-Post inline comments on exact lines using:
+For each issue found, prepare an inline comment with:
+- **File path** and **exact line number** (derived from diff hunk headers — see Phase 3 note)
+- **Comment body** — written like a real senior reviewer on GitHub:
+  - Conversational tone, not robotic
+  - NO severity tags like `**[BLOCKER]**` — just speak naturally
+  - Explain WHAT is wrong, WHY it matters, and HOW to fix it
+  - If possible, suggest the exact code change or pattern to use
+  - Group related findings — if the same mistake repeats 5 times, comment once with "This pattern repeats in lines X, Y, Z — same fix applies"
+
+Present ALL comments to the user in a clear list BEFORE posting anything:
+
+```
+## Prepared Review Comments (NOT yet posted)
+
+### File: path/to/file.go
+
+**Line 42:**
+> This handler is doing direct SQL access via `c.SQL.QueryRowContext`. Handlers should only bind input and call the service layer. Move this query to the store layer and call it through the service.
+
+**Line 87:**
+> There are 8 lines of comments above a 2-line function. The function name `GetUserByID` is self-explanatory — remove the comment block entirely or reduce to a single line.
+
+### File: path/to/another.go
+
+**Line 15-23:**
+> This `go func()` has no context cancellation or timeout. If the parent request finishes, this goroutine will leak. Pass `ctx` and select on `ctx.Done()`.
+
+---
+
+**Summary:**
+- 3 blockers, 2 major, 1 minor
+- Key issues: direct DB access in handler, goroutine leak, comment bloat
+- What's good: clean test structure, proper error types used
+```
+
+### Step 2: Wait for User to Say "Push" or "Post"
+
+**DO NOT post comments to GitHub automatically.** Wait for the user to:
+- Say "push", "post", "submit", "go ahead", or similar confirmation
+- Or say "skip" / "don't post" to discard
+
+### Step 3: Post Comments to GitHub (only after user confirms)
+
+Get HEAD SHA:
+```bash
+gh pr view <number> --repo <owner/repo> --json headRefOid -q '.headRefOid'
+```
+
+Post each inline comment:
 ```bash
 gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
   -f body="comment text" \
@@ -368,58 +418,179 @@ gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
   -f side="RIGHT"
 ```
 
-Get HEAD SHA: `gh pr view <number> --repo <owner/repo> --json headRefOid -q '.headRefOid'`
+### Step 4: Post Summary Review
 
-**Comment style:**
-- Write like a human reviewer — conversational, not robotic
-- NO severity tags like `**[BLOCKER]**` in comments
-- Explain WHY something is wrong and HOW to fix it
-- Group related findings — don't post 10 comments about the same pattern
-- Be constructive, not just critical
-
-### Summary Review
-
-After all inline comments, post ONE summary:
+After ALL inline comments are posted, post ONE summary review:
 
 ```bash
 # If BLOCKERs or MAJORs exist:
 gh pr review <number> --repo <owner/repo> --request-changes --body "$(cat <<'EOF'
-Summary text here with counts by severity and key issues.
+### Review Summary
+
+**Verdict**: Changes Requested
+
+**Stats**: X blockers, Y major, Z minor, W suggestions
+
+**Key Issues (must fix before merge):**
+1. Brief description of blocker/major issue — file:line
+2. Brief description of another issue — file:line
+
+**Minor / Suggestions (nice to have):**
+1. Brief description
+
+**What's Done Well:**
+- Call out things done right — good patterns, clean code, thorough tests, etc.
+
+**Production Readiness:** Not ready / Ready with minor fixes / Ready
 EOF
 )"
 
 # If only MINORs or SUGGESTIONs:
 gh pr review <number> --repo <owner/repo> --comment --body "$(cat <<'EOF'
-Summary text here.
+### Review Summary
+
+**Verdict**: Looks Good with Minor Comments
+
+**Minor / Suggestions:**
+1. Brief description
+
+**What's Done Well:**
+- Call out positives
+
+**Production Readiness:** Ready with minor fixes
 EOF
 )"
 ```
 
-Summary format:
+---
+
+## Phase 5: Re-Review (after author pushes fixes)
+
+When the user asks to re-review the same PR (e.g., `/review owner/repo 142` again, or says "re-review", "check again", "verify fixes"):
+
+### Step 1: Identify What Changed Since Last Review
+
+```bash
+# Get all commits on the PR
+gh pr view <number> --repo <owner/repo> --json commits
+
+# Get the diff of NEW commits only (since last review)
+# Compare the commit SHA from last review vs current HEAD
+gh api repos/{owner}/{repo}/compare/LAST_REVIEWED_SHA...CURRENT_HEAD_SHA
 ```
-### Review Summary
 
-**Verdict**: Changes Requested / Looks Good with Minor Comments
-
-**Stats**: X blockers, Y major, Z minor, W suggestions
-
-**Key Issues:**
-1. Brief description of most important issue
-2. Brief description of second issue
-...
-
-**What's Good:**
-- Call out things done well — good patterns, clean code, thorough tests
+Also fetch the current full diff to see the overall state:
+```bash
+gh pr diff <number> --repo <owner/repo>
 ```
+
+### Step 2: Check Previous Review Comments
+
+Fetch all previous review comments:
+```bash
+gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
+gh pr view <number> --repo <owner/repo> --json reviews,comments
+```
+
+Build a checklist of every issue raised in the previous review.
+
+### Step 3: Verify Each Fix
+
+For EVERY comment from the previous review:
+- Read the current state of the file at that line
+- Determine if the issue is **FIXED**, **PARTIALLY FIXED**, or **NOT FIXED**
+- If NOT FIXED — prepare a follow-up comment: "This was flagged in the previous review and hasn't been addressed yet. [repeat the issue and fix suggestion]"
+- If PARTIALLY FIXED — prepare a comment explaining what's still missing
+
+### Step 4: Audit New Commits for Undocumented Changes
+
+Compare the new commits against the PR description:
+- If new commits introduce changes NOT mentioned in the PR description, flag it: "New commits added [X functionality / changed Y behavior] but the PR description doesn't mention this. Please update the description to reflect all changes."
+- If the PR title no longer accurately reflects the PR after new commits, flag it
+- Check if new commits introduced NEW violations of any rules from Phase 3
+
+### Step 5: Prepare Re-Review (same as Phase 4)
+
+Present all findings to the user BEFORE posting:
+
+```
+## Re-Review: PR #142
+
+### Previous Issues Status:
+- ✅ FIXED: [issue description] — file:line
+- ✅ FIXED: [issue description] — file:line
+- ❌ NOT FIXED: [issue description] — file:line (still present)
+- ⚠️ PARTIALLY FIXED: [issue description] — file:line (still needs X)
+
+### New Issues Found in Latest Commits:
+- [new issue] — file:line
+- [new issue] — file:line
+
+### PR Description Accuracy:
+- ⚠️ New commits added X but description doesn't mention it
+
+### Summary:
+- X of Y previous issues fixed
+- Z new issues found
+- Production readiness: Ready / Not ready
+```
+
+Wait for user to say "push" / "post" before posting to GitHub.
+
+### Step 6: Post Re-Review to GitHub (after user confirms)
+
+Post inline comments for:
+- Unfixed issues (poke again with "Still not addressed from previous review")
+- Partially fixed issues (explain what's remaining)
+- New issues in new commits
+- PR description/title accuracy issues
+
+Post summary review:
+```bash
+gh pr review <number> --repo <owner/repo> --request-changes --body "$(cat <<'EOF'
+### Re-Review Summary
+
+**Previous Review:** X of Y issues resolved
+
+**Still Open:**
+1. [unfixed issue] — file:line
+2. [partially fixed issue] — file:line
+
+**New Issues (from latest commits):**
+1. [new issue] — file:line
+
+**PR Description:** Needs update — new commits added [X] not mentioned in description
+
+**Production Readiness:** Not ready — N issues remaining
+EOF
+)"
+```
+
+If everything is fixed and no new issues:
+```bash
+gh pr review <number> --repo <owner/repo> --comment --body "$(cat <<'EOF'
+### Re-Review Summary
+
+All previous issues have been addressed. No new issues found.
+
+**Production Readiness:** Ready
+EOF
+)"
+```
+
+**NEVER approve the PR** — even if everything is perfect, use `--comment` not `--approve`. The human decides when to merge.
 
 ---
 
 ## Important Rules
 
-- **Fully autonomous** — never ask the user questions during review. Just review end-to-end.
+- **You are a Senior SWE** — review like you own the production system. Every line must be production-ready.
+- **DO NOT auto-post comments** — always prepare and show to user first. Post ONLY when user says "push"/"post"/"submit".
 - **Read-only** — never modify files, never run tests, never run linters. Only read and comment.
 - **Read FULL files** — not just the diff. Context matters for architecture checks.
-- **Be constructive** — explain WHY and HOW, not just "this is wrong."
-- **Group related issues** — don't spam 15 comments about the same pattern.
+- **Be constructive** — explain WHY, WHAT to fix, and HOW. Suggest exact code when possible.
+- **Group related issues** — don't spam 15 comments about the same pattern. One comment + "same issue in lines X, Y, Z".
 - **Cache repo context** — so subsequent reviews of the same repo are faster.
-- **Never approve PRs** — always either request changes or leave comments. The human decides when to merge.
+- **Never approve PRs** — always either request changes or comment. The human decides when to merge.
+- **Re-reviews are thorough** — verify every previous comment is addressed, audit new commits for new violations AND undocumented changes, check PR description accuracy.
+- **Production readiness is the bar** — if it's not ready for production, say so clearly.
