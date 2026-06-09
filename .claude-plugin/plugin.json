@@ -1,0 +1,10 @@
+{
+  "name": "gofr-golang-pr-review-skill",
+  "description": "Opinionated PR review for Go (GoFr framework) backends and React/TypeScript/JavaScript frontends. Caches repo context, enforces layered architecture, checks for comment bloat, goroutine leaks, nil pointer derefs, export hygiene, and 120+ code quality rules.",
+  "author": {
+    "name": "Gajendra Malviya",
+    "email": "thzgajendra@gmail.com"
+  },
+  "category": "development",
+  "homepage": "https://github.com/zopdev/gofr-golang-pr-review-skill"
+}
