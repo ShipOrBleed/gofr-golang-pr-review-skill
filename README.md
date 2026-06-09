@@ -23,7 +23,7 @@ Reviews pull requests against **140+ specific, enforceable rules** covering:
 - **GoFr Patterns**: Proper handler signatures, GoFr service client (not raw net/http), structured logging, config access
 - **Dependency Health**: Flags vulnerable, deprecated, or unmaintained packages
 - **Frontend**: Component standards, TypeScript strictness (`any` = BLOCKER), hook discipline, API contract verification, bundle size awareness
-- **PR Hygiene**: Title/description validation, size checks (400 line threshold), linked issue enforcement, draft detection
+- **PR Hygiene**: Title/description validation, size checks (5K line threshold), linked issue enforcement, draft detection
 
 ## Installation
 

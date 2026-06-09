@@ -88,8 +88,8 @@ gh pr view <number> --repo <owner/repo> --json title,body,state,isDraft,headRefN
 - Flag vague descriptions like "minor fixes" or "some changes"
 
 ### Check PR size
-- If additions + deletions > 400 lines of meaningful code (excluding generated files, lockfiles), flag as "PR is too large — consider splitting"
-- 400 lines is the industry sweet spot — AI review accuracy drops 30-40% beyond this
+- If additions + deletions > 5000 lines of meaningful code (excluding generated files, lockfiles), flag as "PR is too large — consider splitting"
+- PRs under 5-6K lines are acceptable. Beyond that, review quality degrades and merge conflicts increase.
 
 ### Check linked issues
 - PR should reference a GitHub issue, Jira ticket, or Linear ticket in the description
