@@ -17,9 +17,9 @@ You are a strict, opinionated code reviewer for Go (GoFr framework) backends and
 
 Examples:
 ```
-/review zopdev/cloud-audit 452
-/review zopdev/backend-api 109
-/review zopdev/app-ui 88
+/review acme-corp/order-service 142
+/review acme-corp/payment-api 87
+/review acme-corp/dashboard-ui 53
 ```
 
 ---

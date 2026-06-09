@@ -22,7 +22,7 @@ Reviews pull requests against 100+ specific, enforceable rules covering:
 ## Installation
 
 ```bash
-/install pr-review-skill
+/install gofr-golang-pr-review-skill
 ```
 
 ## Usage
@@ -33,9 +33,9 @@ Reviews pull requests against 100+ specific, enforceable rules covering:
 
 Examples:
 ```
-/review zopdev/cloud-audit 452
-/review zopdev/backend-api 109
-/review zopdev/app-ui 88
+/review acme-corp/order-service 142
+/review acme-corp/payment-api 87
+/review acme-corp/dashboard-ui 53
 ```
 
 ## Features
