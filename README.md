@@ -1,34 +1,36 @@
 # GoFr Golang PR Review Skill
 
-Opinionated, comprehensive PR review for **Go (GoFr framework)** backends and **React/TypeScript/JavaScript** frontends.
+Opinionated, in-depth PR review for **Go (GoFr framework)** backends and **React/TypeScript/JavaScript** frontends. Uses **parallel review agents** to analyze every file in the PR — not just skim the diff.
 
-## What It Does
+## Why This Exists
 
-Reviews pull requests against **140+ specific, enforceable rules** covering:
+Most AI review tools give 3-5 surface-level comments on a 9K LOC PR. This skill dispatches **7 parallel agents** — each specialized in one review aspect — to read every file fully and check 140+ rules. A 9K LOC PR gets 50-100 comments, not 4.
 
-- **Architecture**: Handler → Service → Store layered architecture enforcement
-- **Comment Bloat**: Detects excessive comments (7-8 lines for a 1-line method, verbose file headers, bloated constant docs)
-- **Error Handling**: Zero tolerance for panics, nil pointer derefs, swallowed errors, missing error checks
-- **Resource Safety**: Goroutine leak detection, connection/response body closure, context propagation
-- **Concurrency**: Race conditions, mutex ordering, deadlock prevention, atomic operations, `-race` flag enforcement
-- **N+1 Queries**: Detects queries inside loops, enforces batch fetching
-- **Pagination**: All list endpoints must have pagination — no unbounded queries
-- **Security (OWASP)**: SQL injection, command injection, path traversal, SSRF, secrets pattern detection (`AKIA`, `sk-`, `ghp_`), weak crypto
-- **Export Hygiene**: Flags functions/types that should be unexported
-- **Database Rules**: No JOINs, no foreign keys, parameterized queries only
-- **Redis Justification**: Questions Redis usage when in-memory cache might suffice
-- **Breaking Changes**: Detects changed response shapes, removed fields, changed status codes
-- **File Organization**: Interfaces in `interface.go`, constants in `constant.go`
-- **Testing**: Table-driven tests only, 90% coverage, real-world scenarios, no integration tests
-- **GoFr Patterns**: Proper handler signatures, GoFr service client (not raw net/http), structured logging, config access
-- **Dependency Health**: Flags vulnerable, deprecated, or unmaintained packages
-- **Frontend**: Component standards, TypeScript strictness (`any` = BLOCKER), hook discipline, API contract verification, bundle size awareness
-- **PR Hygiene**: Title/description validation, size checks (5K line threshold), linked issue enforcement, draft detection
+## How It Works
+
+```
+STEP 1: Fetch PR data (metadata + full diff)
+STEP 2: Validate PR title, description, linked issues, size
+STEP 3: Categorize files (Go, tests, migrations, frontend, config)
+STEP 4: Load/cache repo context (architecture, patterns, conventions)
+STEP 5: Dispatch 7 parallel agents:
+         Agent 1: Architecture & structure
+         Agent 2: Error handling & safety
+         Agent 3: Code quality & comment bloat
+         Agent 4: Database & queries
+         Agent 5: Testing completeness
+         Agent 6: Security & GoFr patterns
+         Agent 7: Frontend deep review
+STEP 6: Collect, deduplicate, classify issues
+STEP 7: Present review locally (DO NOT auto-post)
+STEP 8: Post to GitHub only when user says "push"
+STEP 9: Re-review mode (verify fixes, audit new commits)
+```
 
 ## Installation
 
 ```bash
-/install gofr-golang-pr-review-skill
+/plugin install gofr-golang-pr-review-skill
 ```
 
 ## Usage
@@ -44,58 +46,88 @@ Examples:
 /review acme-corp/dashboard-ui 53
 ```
 
-## Features
+After review is presented locally:
+- Say **"push"** or **"post"** to post all comments to GitHub
+- Say **"skip"** to discard
 
-- **Context Caching**: Reads repo architecture docs once, caches locally in `.pr-review-context/`. Subsequent reviews skip context-building.
-- **Auto-Detection**: Detects whether PR touches backend (Go), frontend (React/TS/JS), or both — applies relevant rules only.
-- **Prepare Before Post**: Shows all review comments locally first. Posts to GitHub only when you say "push"/"post".
-- **Inline Comments**: Posts review comments on exact lines via GitHub API — like a real reviewer.
-- **Re-Review Mode**: After author pushes fixes, verifies each previous issue is resolved, flags unfixed items, audits new commits for undocumented changes.
-- **Severity Classification**: BLOCKER → MAJOR → MINOR → SUGGESTION.
-- **Never Approves**: Always requests changes or leaves comments. Humans decide when to merge.
-- **Senior SWE Tone**: Comments read like a helpful senior colleague — questions for non-critical issues, direct for critical ones.
-
-## Rule Categories
-
-| Category | Rules | Applies To |
-|----------|-------|------------|
-| Architecture | Handler/Service/Store separation | Go/GoFr |
-| Comment Bloat | File headers, constant docs, function docs | Go + Frontend |
-| Error Handling | Panics, nil derefs, swallowed errors | Go/GoFr |
-| Resource Safety | Goroutine leaks, defer close, context | Go |
-| Concurrency | Race conditions, mutex ordering, atomics | Go |
-| N+1 Queries | Queries inside loops, batch enforcement | Go |
-| Pagination | Unbounded list endpoints | Go |
-| Security (OWASP) | Injection, SSRF, secrets, weak crypto | Go + Frontend |
-| Export Hygiene | Unexported by default | Go |
-| Database | No JOINs, no foreign keys | Go |
-| Redis | Justify over in-memory cache | Go |
-| Breaking Changes | Response shapes, status codes, endpoints | Go + Frontend |
-| File Organization | interface.go, constant.go | Go |
-| Imports | Sorted, no unused, no dot imports | Go + Frontend |
-| Testing | Table-driven, 90% coverage, no integration | Go |
-| GoFr Patterns | Handler sig, service client, logging | Go/GoFr |
-| Dependencies | Vulnerable, deprecated, unmaintained | Go + Frontend |
-| Connection Config | Pool sizing, timeouts | Go |
-| Components | Functional, single file, size limits | React |
-| TypeScript | No `any`, strict mode, proper types | TypeScript |
-| Hooks | Effect discipline, cleanup, deps | React |
-| API Contracts | Frontend types match backend shapes | React/TS |
-| Bundle Size | Duplicate libs, large deps, lazy loading | React/TS/JS |
-| Frontend Testing | Mandatory for new UI code | React/TS/JS |
-| PR Hygiene | Title, description, size, linked issues | All |
-| Changelog | User-facing changes need documentation | All |
-
-## Review Workflow
-
+For re-review after author fixes:
 ```
-1. /review owner/repo 142          → Initial review (prepares comments locally)
-2. User reviews prepared comments   → Adjusts if needed
-3. User says "push"                 → Comments posted to GitHub
-4. Author fixes issues, pushes      → New commits appear
-5. /review owner/repo 142          → Re-review (verifies fixes, audits new changes)
-6. Repeat until production-ready
+/review acme-corp/order-service 142
 ```
+(Same command — detects previous review and runs re-review mode)
+
+## What It Checks
+
+### Backend (Go / GoFr) — 21 Rule Groups
+
+| Rule | What It Catches |
+|------|----------------|
+| Architecture | Handler→Service→Store violations, business logic in wrong layer |
+| Comment Bloat | 7-line comments on 1-line functions, verbose file headers |
+| Export Hygiene | Exported functions that should be unexported |
+| Error Handling | Panics, nil derefs, swallowed errors, wrong error types |
+| Resource Safety | Goroutine leaks, missing defer close, context.Background() |
+| No JOINs | SQL JOINs and foreign keys in queries/migrations |
+| Redis Justify | New Redis usage without justification over in-memory cache |
+| File Org | Interfaces not in interface.go, scattered constants |
+| Imports | Unsorted, unused, dot imports |
+| Testing | Non-table-driven, missing error paths, <90% coverage |
+| HTTP Calls | Raw net/http instead of GoFr service client |
+| Migrations | Wrong naming, syntax errors, JOINs in DDL |
+| GoFr Patterns | json.NewDecoder vs c.Bind, os.Getenv vs c.Config.Get |
+| Dead Code | Commented-out code, unreachable code, debug logging |
+| Security | OWASP: injection, SSRF, path traversal, secrets, weak crypto |
+| N+1 Queries | DB queries inside loops |
+| Pagination | List endpoints without LIMIT/pagination |
+| Concurrency | Race conditions, mutex ordering, goroutine safety |
+| Breaking API | Changed response fields, removed endpoints, status codes |
+| Dependencies | Vulnerable, deprecated, or unnecessary packages |
+| Timeouts | Missing HTTP client timeouts, connection pool defaults |
+
+### Frontend (React / TypeScript / JS) — 15 Rule Groups
+
+| Rule | What It Catches |
+|------|----------------|
+| Existing Patterns | New code breaking established UI patterns |
+| Components | Size, naming, side effects in render |
+| State & Hooks | Derived state in useEffect, missing cleanup, bad deps |
+| TypeScript | `any` usage (BLOCKER), missing strict mode |
+| Error Handling | Empty catch blocks, missing loading/error states |
+| Security | dangerouslySetInnerHTML, eval, secrets in code |
+| Testing | Zero tests for new UI code (BLOCKER) |
+| Imports | Unsorted, unused, non-tree-shakeable |
+| Keys | Missing keys, array index as key |
+| Accessibility | div onClick, missing labels, no alt text |
+| Styling | Inline styles, !important, fixed units |
+| Comments | Same bloat rules as backend |
+| API Contracts | Frontend types don't match backend response |
+| Bundle Size | Duplicate libraries, unjustified large deps |
+| Breaking UI | Changed component props, route paths |
+
+### PR Hygiene
+
+- Empty/vague title or description
+- Missing linked issue/ticket
+- PR over 5K lines
+- Undocumented changes in new commits (re-review)
+
+## Expected Comment Counts
+
+| PR Size | Expected Comments |
+|---------|------------------|
+| 1K LOC | 10-30 |
+| 5K LOC | 30-60 |
+| 9K LOC | 50-100 |
+
+If the review produces fewer comments than expected, the agents re-check.
+
+## Key Design Decisions
+
+- **Never auto-posts** — shows review locally first, posts only on "push"
+- **Never approves** — always requests changes or comments. Humans merge.
+- **Reads full files** — not just diffs. Context matters for architecture checks.
+- **Caches repo context** — first review builds understanding, subsequent reviews are faster.
+- **Re-review verifies fixes** — doesn't just re-run; checks each previous comment is resolved.
 
 ## Requirements
 
@@ -104,7 +136,7 @@ Examples:
 
 ## Contributing
 
-Contributions welcome. Please open an issue or PR at [ShipOrBleed/gofr-golang-pr-review-skill](https://github.com/ShipOrBleed/gofr-golang-pr-review-skill).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
